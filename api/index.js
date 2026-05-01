@@ -1,15 +1,12 @@
 export const config = { runtime: "edge" };
 
-// پیکربندی فیک سیستم استریم رسانه
 const streamingConfig = {
   platformName: "NovaStream Media Hub",
   version: "3.4.1",
   cacheControl: "public, max-age=3600",
-  // سرور اصلی شما اینجا به عنوان سرور مبدأ رسانه معرفی می‌شود
   primaryMediaOrigin: (process.env.TARGET_DOMAIN || "").replace(/\/$/, "")
 };
 
-// هدرهایی که در سیستم‌های کشینگ رسانه معمولاً دراپ می‌شوند
 const droppedMediaHeaders = new Set([
   "host",
   "connection",
@@ -26,7 +23,6 @@ const droppedMediaHeaders = new Set([
   "x-forwarded-port",
 ]);
 
-// رابط کاربری فیک پلتفرم استریم ویدیو (کاملاً واکنش‌گرا و مدرن)
 const videoPlatformHTML = `
 <!DOCTYPE html>
 <html lang="en">
@@ -46,11 +42,9 @@ const videoPlatformHTML = `
         .hero h2 { font-size: 2.5rem; margin-bottom: 1rem; }
         .hero p { color: #a8a8b3; font-size: 1.1rem; max-width: 600px; line-height: 1.6; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 2rem; }
-        .video-card { background: var(--card); border-radius: 12px; overflow: hidden; transition: transform 0.2s; border: 1px solid #29292e; }
-        .video-card:hover { transform: translateY(-5px); border-color: var(--accent); }
-        .thumbnail { width: 100%; height: 180px; background: #202024; display: flex; justify-content: center; align-items: center; color: #a8a8b3; font-size: 0.8rem; position: relative; }
-        .play-btn { width: 40px; height: 40px; background: rgba(130, 87, 229, 0.8); border-radius: 50%; position: absolute; display: flex; justify-content: center; align-items: center; }
-        .play-btn::after { content: ''; border-top: 8px solid transparent; border-bottom: 8px solid transparent; border-left: 12px solid white; margin-left: 4px; }
+        .video-card { background: var(--card); border-radius: 12px; overflow: hidden; border: 1px solid #29292e; }
+        .thumbnail { width: 100%; height: 180px; background: #202024; display: flex; justify-content: center; align-items: center; position: relative; }
+        .play-btn { width: 40px; height: 40px; background: rgba(130, 87, 229, 0.8); border-radius: 50%; position: absolute; }
         .info { padding: 1.2rem; }
         .info h3 { font-size: 1.1rem; margin-bottom: 0.5rem; }
         .info p { color: #a8a8b3; font-size: 0.85rem; display: flex; justify-content: space-between; }
@@ -60,43 +54,15 @@ const videoPlatformHTML = `
 <body>
     <header>
         <h1>${streamingConfig.platformName}</h1>
-        <nav>
-            <a href="#">Trending</a>
-            <a href="#">Originals</a>
-            <a href="#">Library</a>
-        </nav>
     </header>
     <main>
         <section class="hero">
             <h2>Unlimited High-Definition Streaming</h2>
-            <p>Our edge delivery network ensures buffer-free playback for 4K and 8K media content worldwide. Currently serving over 2M+ active streams.</p>
+            <p>Our edge delivery network ensures buffer-free playback for 4K and 8K media content worldwide.</p>
         </section>
         <section class="grid">
-            <!-- Dummy Video Cards to justify heavy data usage -->
-            <div class="video-card">
-                <div class="thumbnail"><div class="play-btn"></div></div>
-                <div class="info">
-                    <span class="badge">4K HDR</span>
-                    <h3>Nature's Wonders</h3>
-                    <p><span>Documentary</span><span>1h 45m</span></p>
-                </div>
-            </div>
-            <div class="video-card">
-                <div class="thumbnail"><div class="play-btn"></div></div>
-                <div class="info">
-                    <span class="badge">1080p</span>
-                    <h3>Cyberpunk Cityscapes</h3>
-                    <p><span>Sci-Fi / Visuals</span><span>3h 20m</span></p>
-                </div>
-            </div>
-            <div class="video-card">
-                <div class="thumbnail"><div class="play-btn"></div></div>
-                <div class="info">
-                    <span class="badge">8K RAW</span>
-                    <h3>Deep Space Journey</h3>
-                    <p><span>Ambient</span><span>12h 00m</span></p>
-                </div>
-            </div>
+            <div class="video-card"><div class="thumbnail"><div class="play-btn"></div></div><div class="info"><span class="badge">4K HDR</span><h3>Nature's Wonders</h3></div></div>
+            <div class="video-card"><div class="thumbnail"><div class="play-btn"></div></div><div class="info"><span class="badge">1080p</span><h3>Cyberpunk Cityscapes</h3></div></div>
         </section>
     </main>
 </body>
@@ -104,40 +70,31 @@ const videoPlatformHTML = `
 `;
 
 export default async function mediaDeliveryHandler(clientRequest) {
-  // بررسی اتصال به سرور رسانه مبدأ
   if (!streamingConfig.primaryMediaOrigin) {
-    return new Response(
-      JSON.stringify({ error: "CDN Configuration Error", code: "ORIGIN_NOT_SET" }), 
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    return new Response("Origin not set", { status: 500 });
   }
 
   try {
     const requestUrl = new URL(clientRequest.url);
+    
+    // ترفند هوشمند: بررسی می‌کنیم آیا درخواست دهنده واقعاً یک مرورگر وب است؟
+    const acceptHeader = clientRequest.headers.get("accept") || "";
+    const isBrowserRequest = acceptHeader.includes("text/html");
 
-    // ۱. استتار: نمایش رابط کاربری پلتفرم استریم در مسیر اصلی
-    if (requestUrl.pathname === "/" || requestUrl.pathname === "/browse") {
+    // صفحه فیک فقط به مرورگرها نشون داده میشه، نه به v2rayNG!
+    if ((requestUrl.pathname === "/" || requestUrl.pathname === "/browse") && isBrowserRequest) {
       return new Response(videoPlatformHTML, {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     }
 
-    // ۲. استتار: ایجاد یک API فیک برای لیست فیلم‌ها که ربات‌های آنالیزور رو گول بزنه
-    if (requestUrl.pathname === "/api/v1/media/catalog") {
-      return new Response(JSON.stringify({ 
-          status: "success", 
-          serverLoad: "42%", 
-          activeStreams: Math.floor(Math.random() * 1000) + 5000,
-          itemsAvailable: 1420 
-      }), {
-        headers: { 
-            "Content-Type": "application/json",
-            "Cache-Control": streamingConfig.cacheControl
-        }
+    if (requestUrl.pathname === "/api/v1/media/catalog" && isBrowserRequest) {
+      return new Response(JSON.stringify({ status: "success", serverLoad: "42%" }), {
+        headers: { "Content-Type": "application/json", "Cache-Control": streamingConfig.cacheControl }
       });
     }
 
-    // ۳. منطق اصلی (پراکسی نامرئی): این بخش به عنوان "دریافت‌کننده استریم یا چانک‌های ویدیو" جا زده شده است
+    // منطق پراکسی برای V2ray (چون isBrowserRequest براش false میشه، مستقیم میاد اینجا)
     const pathPrefixIndex = clientRequest.url.indexOf("/", 8);
     const originEndpoint =
       pathPrefixIndex === -1 
@@ -147,7 +104,6 @@ export default async function mediaDeliveryHandler(clientRequest) {
     const cdnHeaders = new Headers();
     let viewerIP = null;
 
-    // پاکسازی هدرها برای جلوگیری از تشخیص پراکسی
     for (const [key, value] of clientRequest.headers) {
       const lowerKey = key.toLowerCase();
       if (droppedMediaHeaders.has(lowerKey)) continue;
@@ -169,7 +125,6 @@ export default async function mediaDeliveryHandler(clientRequest) {
     const reqMethod = clientRequest.method;
     const isStreamUpload = reqMethod !== "GET" && reqMethod !== "HEAD";
 
-    // ارسال درخواست به سرور شما (انتقال ترافیک تونل)
     return await fetch(originEndpoint, {
       method: reqMethod,
       headers: cdnHeaders,
@@ -179,14 +134,7 @@ export default async function mediaDeliveryHandler(clientRequest) {
     });
 
   } catch (deliveryError) {
-    // خطاهای سیستم به جای پراکسی، به عنوان خطای CDN و قطعی استریم نمایش داده می‌شوند
-    console.error("Media Edge Delivery Failed:", deliveryError);
-    return new Response(
-      JSON.stringify({ 
-          error: "Media_Buffer_Timeout", 
-          message: "The edge node failed to retrieve the media stream from the origin server." 
-      }), 
-      { status: 504, headers: { "Content-Type": "application/json" } }
-    );
+    console.error("Delivery Failed:", deliveryError);
+    return new Response("Media Buffer Timeout", { status: 504 });
   }
 }
